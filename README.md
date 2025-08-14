@@ -92,7 +92,7 @@ The PD controller computes:
   $$
 * **Angular velocity**:
 
-  ω=K_p \cdot e_{angle} + Kd⋅dt \cdot \frac{de_angle}}{dt}
+  ω = K_p \cdot e_{angle} + K_d \cdot \frac{de_angle}}{dt}
 ​
  
 ​
