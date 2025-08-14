@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from turtlesim.msg import Pose
+from turtlesim.srv import Spawn
+from geometry_msgs.msg import Twist
+from math import sqrt,atan2,cos,sin
+
+
+class SpawnNode(Node):
+
+    def __init__(self):
+        super().__init__('spawn_node')
+        self.client = self.create_client(Spawn, 'spawn')
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn('Waiting for spawn service...')
+
+        self.request = Spawn.Request()
+        self.request.x = 4.5
+        self.request.y = 4.5
+        self.request.theta = 0.0
+        self.request.name = "turtle2"
+
+        self.future = self.client.call_async(self.request)
+        self.future.add_done_callback(self.spawn_response_callback)
+
+    def spawn_response_callback(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info(f"Turtle spawned: {response.name}")
+        except Exception as e:
+            self.get_logger().error(f"Service call failed: {e}")
+
+
+
+class TwistPublisherNode(Node):
+
+    def __init__(self):
+        super().__init__('twist_pub2')
+        self.subscribe_1 = self.create_subscription(Pose,'/turtle1/pose',self.pose_callback,10)
+        self.subscribe_2 = self.create_subscription(Pose,'/turtle2/pose',self.pose_callback2,10)
+        self.publisher = self.create_publisher(Twist, '/turtle2/cmd_vel', 10)
+        self.timer = self.create_timer(0.5, self.send_velocity_command2)
+        self.get_logger().info("Publishing velocity commands to turtle2")
+        
+        self.prev_distance = 0.0
+        self.prev_time = self.get_clock().now()
+
+    def pose_callback(self, msg: Pose):
+        self.latest_pose = msg
+        self.get_logger().info(f"Pose - x: {msg.x}, y: {msg.y}, theta: {msg.theta}")
+
+    def pose_callback2(self, msg: Pose):
+        self.latest_pose2 = msg
+        self.get_logger().info(f"Pose - x: {msg.x}, y: {msg.y}, theta: {msg.theta}")
+
+    def normalize_angle(self, angle):
+        from math import pi
+        while angle > pi:
+            angle -= 2 * pi
+        while angle < -pi:
+            angle += 2 * pi
+        return angle
+
+    def send_velocity_command2(self):
+        if not hasattr(self, 'latest_pose') or not hasattr(self, 'latest_pose2'):
+            self.get_logger().warn("Waiting for both turtle poses...")
+            return
+
+        msg = Twist()
+        turtle1_x = self.latest_pose.x
+        turtle1_y = self.latest_pose.y
+        turtle2_x = self.latest_pose2.x
+        turtle2_y = self.latest_pose2.y
+        turtle2_theta = self.latest_pose2.theta
+
+        dx = turtle1_x - turtle2_x
+        dy = turtle1_y - turtle2_y
+
+        distance = sqrt(dx**2 + dy**2)
+        target_angle = atan2(dy, dx)
+        angle_error = self.normalize_angle(target_angle - turtle2_theta)
+
+        # Current time
+        now_time = self.get_clock().now()
+        dt = (now_time - self.prev_time).nanoseconds / 1e9
+        if dt == 0:
+            dt = 1e-6  # Prevent division by zero
+
+        # Derivative of distance (for PD linear control)
+        d_distance = (distance - self.prev_distance) / dt
+
+        # Derivative of angle (for PD angular control)
+        d_angle_error = (angle_error - getattr(self, 'prev_angle_error', 0.0)) / dt
+
+        # PD gains (Try adjusting)
+        Kp_linear = 1.5
+        Kd_linear = 0.2
+
+        Kp_angular = 0.8
+        Kd_angular = 0.5
+
+        # PD control
+        linear_speed = Kp_linear * distance + Kd_linear * d_distance
+        angular_speed = Kp_angular * angle_error + Kd_angular * d_angle_error
+
+        # Limit speeds
+        linear_speed = min(max(linear_speed, -2.0), 2.0)
+        angular_speed = min(max(angular_speed, -5.0), 5.0)
+
+        msg.linear.x = linear_speed
+        msg.angular.z = angular_speed
+
+        self.publisher.publish(msg)
+
+        # Store previous values
+        self.prev_distance = distance
+        self.prev_angle_error = angle_error
+        self.prev_time = now_time
+
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    spawn_node = SpawnNode()
+    twist_node2 = TwistPublisherNode()
+
+    # Spin all nodes together using a MultiThreadedExecutor
+    from rclpy.executors import MultiThreadedExecutor
+    executor = MultiThreadedExecutor()
+    executor.add_node(spawn_node)
+    executor.add_node(twist_node2)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+
+    spawn_node.destroy_node()
+
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+    
