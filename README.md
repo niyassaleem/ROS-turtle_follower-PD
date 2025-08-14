@@ -114,16 +114,5 @@ Where:
 ## 🧑‍💻 Author
 
 Niyas 
-[Your GitHub](https://github.com/niyassaleem)
+[GitHub](https://github.com/niyassaleem)
 
-```
-
----
-
-### ✅ Tips:
-- Replace `"your-username"` with your actual GitHub username.
-- Rename the `pd_controller.py` file in your repo if needed.
-- Add a proper `setup.py` and `package.xml` to make it fully buildable (I can help with that too).
-
-Would you like a `setup.py` and `package.xml` to make this a ROS 2 package?
-```
