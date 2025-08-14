@@ -1,4 +1,3 @@
-Here's a professional and clear `README.md` tailored for your ROS 2 turtlesim project with a PD controller and turtle spawning:
 
 ---
 
